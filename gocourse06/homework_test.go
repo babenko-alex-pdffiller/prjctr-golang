@@ -36,11 +36,14 @@ func TestProcessData(t *testing.T) {
 }
 
 func TestCollectAnimalsData(t *testing.T) {
+	// Arrange
 	animalChannel := make(chan Animal, 1)
 	animal := &Animal{Name: "Lion"}
 
+	// Act
 	go collectAnimalsData(animal, animalChannel)
 
+	// Assert
 	select {
 	case receivedAnimal := <-animalChannel:
 		if receivedAnimal.Name != "Lion" {
