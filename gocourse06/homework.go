@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand/v2"
+	"sync"
 	"time"
 )
 
@@ -24,22 +25,39 @@ type Feeder struct {
 }
 
 func main() {
+	var wg sync.WaitGroup
+	processData(&wg)
+}
+
+func processData(wg *sync.WaitGroup) {
 	animals := getAnimals()
 	animalsChannel := make(chan Animal)
+	wg.Add(len(animals))
 	for _, animal := range animals {
-		go collectAnimalsData(&animal, animalsChannel)
+		go func(animal Animal) {
+			defer wg.Done()
+			collectAnimalsData(&animal, animalsChannel)
+		}(animal)
 	}
 
 	cages := getCages()
 	cagesChannel := make(chan Cage)
+	wg.Add(len(cages))
 	for _, cage := range cages {
-		go collectCagesData(&cage, cagesChannel)
+		go func(cage Cage) {
+			defer wg.Done()
+			collectCagesData(&cage, cagesChannel)
+		}(cage)
 	}
 
 	feeders := getFeeders()
 	feedersChannel := make(chan Feeder)
+	wg.Add(len(feeders))
 	for _, feeder := range feeders {
-		go collectFeedersData(&feeder, feedersChannel)
+		go func(feeder Feeder) {
+			defer wg.Done()
+			collectFeedersData(feeder, feedersChannel)
+		}(feeder)
 	}
 
 	go func() {
@@ -60,11 +78,16 @@ func main() {
 		}
 	}()
 
-	fmt.Println("Press Enter to exit...")
-	fmt.Scanln()
+	wg.Wait()
+
+	close(animalsChannel)
+	close(cagesChannel)
+	close(feedersChannel)
+
+	fmt.Println("All goroutines finished")
 }
 
-func collectAnimalsData(animal *Animal, ch chan<- Animal) {
+var collectAnimalsData = func(animal *Animal, ch chan<- Animal) {
 	ch <- *animal
 	fmt.Printf("Collect data for %s\n", animal.Name)
 	time.Sleep(time.Second * time.Duration(rand.IntN(5)+1))
@@ -86,7 +109,7 @@ func getAnimals() [5]Animal {
 	return animals
 }
 
-func collectCagesData(cage *Cage, ch chan<- Cage) {
+var collectCagesData = func(cage *Cage, ch chan<- Cage) {
 	ch <- *cage
 	fmt.Printf("Collect Cage data #%d\n", cage.ID)
 	time.Sleep(time.Second * time.Duration(rand.IntN(3)+1))
@@ -95,7 +118,7 @@ func collectCagesData(cage *Cage, ch chan<- Cage) {
 func getCages() [5]Cage {
 	cages := [5]Cage{}
 
-	for i := range [5]int{} {
+	for i := range 5 {
 		cages[i] = Cage{
 			ID:     i + 1,
 			IsOpen: rand.IntN(2) == 1,
@@ -105,8 +128,8 @@ func getCages() [5]Cage {
 	return cages
 }
 
-func collectFeedersData(feeder *Feeder, ch chan<- Feeder) {
-	ch <- *feeder
+var collectFeedersData = func(feeder Feeder, ch chan<- Feeder) {
+	ch <- feeder
 	fmt.Printf("Collect Feeder data #%d\n", feeder.ID)
 	time.Sleep(time.Second * time.Duration(rand.IntN(3)+1))
 }
@@ -114,7 +137,7 @@ func collectFeedersData(feeder *Feeder, ch chan<- Feeder) {
 func getFeeders() [5]Feeder {
 	feeders := [5]Feeder{}
 
-	for i := range [5]int{} {
+	for i := range 5 {
 		feeders[i] = Feeder{
 			ID:     i + 1,
 			IsFull: rand.IntN(2) == 1,
