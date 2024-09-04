@@ -6,24 +6,8 @@ import (
 	"time"
 )
 
-func mockCollectAnimalsData(a *Animal, ch chan<- Animal) {
-	ch <- *a
-}
-
-func mockCollectCagesData(c *Cage, ch chan<- Cage) {
-	ch <- *c
-}
-
-func mockCollectFeedersData(f Feeder, ch chan<- Feeder) {
-	ch <- f
-}
-
 func TestProcessData(t *testing.T) {
 	// Arrange
-	collectAnimalsData = mockCollectAnimalsData
-	collectCagesData = mockCollectCagesData
-	collectFeedersData = mockCollectFeedersData
-
 	var wg sync.WaitGroup
 
 	// Act
@@ -41,7 +25,7 @@ func TestCollectAnimalsData(t *testing.T) {
 	animal := &Animal{Name: "Lion"}
 
 	// Act
-	go collectAnimalsData(animal, animalChannel)
+	go collectAnimalsData(animal, animalChannel, time.Duration(0))
 
 	// Assert
 	select {

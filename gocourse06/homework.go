@@ -30,39 +30,39 @@ func main() {
 }
 
 func processData(wg *sync.WaitGroup) {
-	animals := getAnimals()
+	animals := makeAnimals()
 	animalsChannel := make(chan Animal)
 	wg.Add(len(animals))
 	for _, animal := range animals {
 		go func(animal Animal) {
 			defer wg.Done()
-			collectAnimalsData(&animal, animalsChannel)
+			collectAnimalsData(&animal, animalsChannel, time.Duration(rand.IntN(5)))
 		}(animal)
 	}
 
-	cages := getCages()
+	cages := makeCages()
 	cagesChannel := make(chan Cage)
 	wg.Add(len(cages))
 	for _, cage := range cages {
 		go func(cage Cage) {
 			defer wg.Done()
-			collectCagesData(&cage, cagesChannel)
+			collectCagesData(&cage, cagesChannel, time.Duration(rand.IntN(5)))
 		}(cage)
 	}
 
-	feeders := getFeeders()
+	feeders := makeFeeders()
 	feedersChannel := make(chan Feeder)
 	wg.Add(len(feeders))
 	for _, feeder := range feeders {
 		go func(feeder Feeder) {
 			defer wg.Done()
-			collectFeedersData(feeder, feedersChannel)
+			collectFeedersData(feeder, feedersChannel, time.Duration(rand.IntN(5)))
 		}(feeder)
 	}
 
 	go func() {
 		for status := range animalsChannel {
-			fmt.Printf("Received Aminal data: %+v\n", status)
+			fmt.Printf("Received Animal data: %+v\n", status)
 		}
 	}()
 
@@ -80,20 +80,16 @@ func processData(wg *sync.WaitGroup) {
 
 	wg.Wait()
 
-	close(animalsChannel)
-	close(cagesChannel)
-	close(feedersChannel)
-
 	fmt.Println("All goroutines finished")
 }
 
-var collectAnimalsData = func(animal *Animal, ch chan<- Animal) {
+var collectAnimalsData = func(animal *Animal, ch chan<- Animal, timeout time.Duration) {
 	ch <- *animal
 	fmt.Printf("Collect data for %s\n", animal.Name)
-	time.Sleep(time.Second * time.Duration(rand.IntN(5)+1))
+	time.Sleep(time.Second * timeout)
 }
 
-func getAnimals() [5]Animal {
+func makeAnimals() [5]Animal {
 	animalNames := []string{"Lion", "Elephant", "Giraffe", "Zebra", "Monkey"}
 	animals := [5]Animal{}
 
@@ -109,13 +105,13 @@ func getAnimals() [5]Animal {
 	return animals
 }
 
-var collectCagesData = func(cage *Cage, ch chan<- Cage) {
+var collectCagesData = func(cage *Cage, ch chan<- Cage, timeout time.Duration) {
 	ch <- *cage
 	fmt.Printf("Collect Cage data #%d\n", cage.ID)
-	time.Sleep(time.Second * time.Duration(rand.IntN(3)+1))
+	time.Sleep(time.Second * timeout)
 }
 
-func getCages() [5]Cage {
+func makeCages() [5]Cage {
 	cages := [5]Cage{}
 
 	for i := range 5 {
@@ -128,13 +124,13 @@ func getCages() [5]Cage {
 	return cages
 }
 
-var collectFeedersData = func(feeder Feeder, ch chan<- Feeder) {
+var collectFeedersData = func(feeder Feeder, ch chan<- Feeder, timeout time.Duration) {
 	ch <- feeder
 	fmt.Printf("Collect Feeder data #%d\n", feeder.ID)
-	time.Sleep(time.Second * time.Duration(rand.IntN(3)+1))
+	time.Sleep(time.Second * timeout)
 }
 
-func getFeeders() [5]Feeder {
+func makeFeeders() [5]Feeder {
 	feeders := [5]Feeder{}
 
 	for i := range 5 {
