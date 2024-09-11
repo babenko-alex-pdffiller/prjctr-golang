@@ -22,6 +22,24 @@ type Cage struct {
 type Feeder struct {
 	ID     int
 	IsFull bool
+	chanel chan<- bool
+	wg     *sync.WaitGroup
+}
+
+func (f *Feeder) ToFill() {
+	f.IsFull = true
+}
+
+func (f *Feeder) ToEmpty() {
+	f.IsFull = false
+}
+
+func (f *Feeder) Feed() {
+	f.wg.Add(1)
+	go func() {
+		defer f.wg.Done()
+		f.chanel <- f.IsFull
+	}()
 }
 
 func main() {
@@ -30,35 +48,44 @@ func main() {
 }
 
 func processData(wg *sync.WaitGroup) {
-	animals := makeAnimals()
+	animals := generateAnimals()
 	animalsChannel := make(chan Animal)
 	wg.Add(len(animals))
 	for _, animal := range animals {
-		go func(animal Animal) {
+		go func() {
 			defer wg.Done()
-			collectAnimalsData(animal, animalsChannel, time.Duration(rand.IntN(5)))
-		}(animal)
+			collectAnimalsData(animal, animalsChannel, time.Duration(rand.IntN(5))*time.Second)
+		}()
 	}
 
-	cages := makeCages()
 	cagesChannel := make(chan Cage)
-	wg.Add(len(cages))
-	for _, cage := range cages {
-		go func(cage Cage) {
-			defer wg.Done()
-			collectCagesData(cage, cagesChannel, time.Duration(rand.IntN(5)))
-		}(cage)
+	cage := Cage{
+		ID:     111,
+		IsOpen: rand.IntN(2) == 1,
 	}
 
-	feeders := makeFeeders()
-	feedersChannel := make(chan Feeder)
-	wg.Add(len(feeders))
-	for _, feeder := range feeders {
-		go func(feeder Feeder) {
-			defer wg.Done()
-			collectFeedersData(feeder, feedersChannel, time.Duration(rand.IntN(5)))
-		}(feeder)
+	go toggleCageDoor(cagesChannel)
+
+	cagesChannel <- cage
+
+	feederChannel := make(chan bool)
+	feeder := Feeder{
+		ID:     11,
+		IsFull: false,
+		chanel: feederChannel,
+		wg:     wg,
 	}
+
+	feeder.Feed()
+	feederState := <-feederChannel
+	fmt.Printf("Recived Feeder status: is full %t\n", feederState)
+
+	time.Sleep(time.Second)
+
+	feeder.ToFill()
+	feeder.Feed()
+	feederState = <-feederChannel
+	fmt.Printf("Recived Feeder status: is full %t\n", feederState)
 
 	go func() {
 		for status := range animalsChannel {
@@ -72,24 +99,20 @@ func processData(wg *sync.WaitGroup) {
 		}
 	}()
 
-	go func() {
-		for feeder := range feedersChannel {
-			fmt.Printf("Feeder #%d is full %t\n", feeder.ID, feeder.IsFull)
-		}
-	}()
+	cagesChannel <- cage
 
 	wg.Wait()
 
 	fmt.Println("All goroutines finished")
 }
 
-var collectAnimalsData = func(animal Animal, ch chan<- Animal, timeout time.Duration) {
-	ch <- animal
+func collectAnimalsData(animal Animal, ch chan<- Animal, timeout time.Duration) {
 	fmt.Printf("Collect data for %s\n", animal.Name)
+	ch <- animal
 	time.Sleep(timeout)
 }
 
-func makeAnimals() [5]Animal {
+func generateAnimals() [5]Animal {
 	animalNames := []string{"Lion", "Elephant", "Giraffe", "Zebra", "Monkey"}
 	animals := [5]Animal{}
 
@@ -98,47 +121,21 @@ func makeAnimals() [5]Animal {
 			Name:   name,
 			Health: rand.IntN(100),
 			Hunger: rand.IntN(100),
-			State:  []string{"Happy", "Sad", "Angry"}[rand.IntN(3)],
+
+			State: []string{"Happy", "Sad", "Angry"}[rand.IntN(3)],
 		}
 	}
 
 	return animals
 }
 
-var collectCagesData = func(cage Cage, ch chan<- Cage, timeout time.Duration) {
-	ch <- cage
-	fmt.Printf("Collect Cage data #%d\n", cage.ID)
-	time.Sleep(timeout)
-}
-
-func makeCages() [5]Cage {
-	cages := [5]Cage{}
-
-	for i := range 5 {
-		cages[i] = Cage{
-			ID:     i + 1,
-			IsOpen: rand.IntN(2) == 1,
-		}
+func toggleCageDoor(ch <-chan Cage) {
+	cage := <-ch
+	if cage.IsOpen == true {
+		cage.IsOpen = false
+		fmt.Printf("Cage #%d is closed\n", cage.ID)
+	} else {
+		cage.IsOpen = true
+		fmt.Printf("Cage #%d is opened\n", cage.ID)
 	}
-
-	return cages
-}
-
-var collectFeedersData = func(feeder Feeder, ch chan<- Feeder, timeout time.Duration) {
-	ch <- feeder
-	fmt.Printf("Collect Feeder data #%d\n", feeder.ID)
-	time.Sleep(timeout)
-}
-
-func makeFeeders() [5]Feeder {
-	feeders := [5]Feeder{}
-
-	for i := range 5 {
-		feeders[i] = Feeder{
-			ID:     i + 1,
-			IsFull: rand.IntN(2) == 1,
-		}
-	}
-
-	return feeders
 }
