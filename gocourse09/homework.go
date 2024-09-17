@@ -32,8 +32,7 @@ func (f *Feeder) giveOut(foodsAmount map[string]int) {
 
 type Food struct {
 	Amount int
-
-	Type string
+	Type   string
 }
 
 func main() {
@@ -46,6 +45,7 @@ func main() {
 
 	stop := make(chan bool)
 
+	// animals moving
 	go func() {
 		for {
 			select {
@@ -58,7 +58,8 @@ func main() {
 			}
 		}
 	}()
-	// few moment later
+
+	// waiting for push the button
 	fmt.Scanln()
 	stop <- true
 
