@@ -15,15 +15,31 @@ type Animal struct {
 }
 
 type Cage struct {
-	ID     int
-	IsOpen bool
+	ID            int
+	IsOpen        bool
+	openCloseChan chan<- map[int]bool
+	wg            *sync.WaitGroup
+}
+
+func (c *Cage) ToggleCageDoor() {
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		if c.IsOpen {
+			c.IsOpen = false
+		} else {
+			c.IsOpen = true
+		}
+		c.openCloseChan <- map[int]bool{c.ID: c.IsOpen}
+		time.Sleep(time.Second)
+	}()
 }
 
 type Feeder struct {
-	ID     int
-	IsFull bool
-	chanel chan<- bool
-	wg     *sync.WaitGroup
+	ID          int
+	IsFull      bool
+	fullingChan chan<- bool
+	wg          *sync.WaitGroup
 }
 
 func (f *Feeder) ToFill() {
@@ -38,7 +54,7 @@ func (f *Feeder) Feed() {
 	f.wg.Add(1)
 	go func() {
 		defer f.wg.Done()
-		f.chanel <- f.IsFull
+		f.fullingChan <- f.IsFull
 	}()
 }
 
@@ -58,34 +74,36 @@ func processData(wg *sync.WaitGroup) {
 		}()
 	}
 
-	cagesChannel := make(chan Cage)
+	cageChannel := make(chan map[int]bool)
 	cage := Cage{
-		ID:     111,
-		IsOpen: rand.IntN(2) == 1,
+		ID:            111,
+		IsOpen:        false,
+		openCloseChan: cageChannel,
+		wg:            wg,
 	}
 
-	go toggleCageDoor(cagesChannel)
-
-	cagesChannel <- cage
+	cage.ToggleCageDoor()
 
 	feederChannel := make(chan bool)
 	feeder := Feeder{
-		ID:     11,
-		IsFull: false,
-		chanel: feederChannel,
-		wg:     wg,
+		ID:          11,
+		IsFull:      false,
+		fullingChan: feederChannel,
+		wg:          wg,
 	}
 
 	feeder.Feed()
 	feederState := <-feederChannel
-	fmt.Printf("Recived Feeder status: is full %t\n", feederState)
+	fmt.Printf("Received Feeder status: is full %t\n", feederState)
 
 	time.Sleep(time.Second)
 
 	feeder.ToFill()
 	feeder.Feed()
 	feederState = <-feederChannel
-	fmt.Printf("Recived Feeder status: is full %t\n", feederState)
+	fmt.Printf("Received Feeder status: is full %t\n", feederState)
+
+	cage.ToggleCageDoor()
 
 	go func() {
 		for status := range animalsChannel {
@@ -94,12 +112,12 @@ func processData(wg *sync.WaitGroup) {
 	}()
 
 	go func() {
-		for cage := range cagesChannel {
-			fmt.Printf("Cage #%d is open %t\n", cage.ID, cage.IsOpen)
+		for cage := range cageChannel {
+			for id, isOpen := range cage {
+				fmt.Printf("Cage #%d is open %t\n", id, isOpen)
+			}
 		}
 	}()
-
-	cagesChannel <- cage
 
 	wg.Wait()
 
@@ -127,15 +145,4 @@ func generateAnimals() [5]Animal {
 	}
 
 	return animals
-}
-
-func toggleCageDoor(ch <-chan Cage) {
-	cage := <-ch
-	if cage.IsOpen == true {
-		cage.IsOpen = false
-		fmt.Printf("Cage #%d is closed\n", cage.ID)
-	} else {
-		cage.IsOpen = true
-		fmt.Printf("Cage #%d is opened\n", cage.ID)
-	}
 }
