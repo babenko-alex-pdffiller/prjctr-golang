@@ -22,17 +22,12 @@ type Cage struct {
 }
 
 func (c *Cage) ToggleCageDoor() {
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		if c.IsOpen {
-			c.IsOpen = false
-		} else {
-			c.IsOpen = true
-		}
-		c.openCloseChan <- map[int]bool{c.ID: c.IsOpen}
-		time.Sleep(time.Second)
-	}()
+	if c.IsOpen {
+		c.IsOpen = false
+	} else {
+		c.IsOpen = true
+	}
+	c.openCloseChan <- map[int]bool{c.ID: c.IsOpen}
 }
 
 type Feeder struct {
@@ -75,6 +70,14 @@ func processData(wg *sync.WaitGroup) {
 	}
 
 	cageChannel := make(chan map[int]bool)
+	go func() {
+		for cage := range cageChannel {
+			for id, isOpen := range cage {
+				fmt.Printf("Cage #%d is open %t\n", id, isOpen)
+			}
+		}
+	}()
+
 	cage := Cage{
 		ID:            111,
 		IsOpen:        false,
@@ -111,14 +114,6 @@ func processData(wg *sync.WaitGroup) {
 		}
 	}()
 
-	go func() {
-		for cage := range cageChannel {
-			for id, isOpen := range cage {
-				fmt.Printf("Cage #%d is open %t\n", id, isOpen)
-			}
-		}
-	}()
-
 	wg.Wait()
 
 	fmt.Println("All goroutines finished")
@@ -127,7 +122,6 @@ func processData(wg *sync.WaitGroup) {
 func collectAnimalsData(animal Animal, ch chan<- Animal, timeout time.Duration) {
 	fmt.Printf("Collect data for %s\n", animal.Name)
 	ch <- animal
-	time.Sleep(timeout)
 }
 
 func generateAnimals() [5]Animal {
