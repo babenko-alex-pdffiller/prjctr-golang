@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
 )
 
-// Тест роботи сенсорів та центральної системи
 func TestSensorAndCentralSystem(t *testing.T) {
 	dataChannel := make(chan Sensor, 3)
 	wg := sync.WaitGroup{}
@@ -25,8 +25,8 @@ func TestSensorAndCentralSystem(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	for _, sensor := range sensors {
-		go sensor.Run(ctx, dataChannel)
+	for i, _ := range sensors {
+		go sensors[i].Run(&wg, ctx, dataChannel)
 	}
 
 	go cs.Run(ctx, dataChannel)
@@ -41,6 +41,7 @@ func TestSensorAndCentralSystem(t *testing.T) {
 	}
 
 	for _, sensor := range sensors {
+		fmt.Printf("%d", len(cs.data[sensor.Type]))
 		if len(cs.data[sensor.Type]) == 0 {
 			t.Errorf("Expected data for sensor type %s, but found none", sensor.Type)
 		}

@@ -15,19 +15,23 @@ type Sensor struct {
 	IsActive bool
 }
 
-func (s *Sensor) Run(ctx context.Context, dataChannel chan<- Sensor) {
+func (s *Sensor) Run(wg *sync.WaitGroup, ctx context.Context, dataChannel chan<- Sensor) {
 	for {
 		select {
 		case <-ctx.Done():
+			wg.Add(1)
 			fmt.Printf("Sensor #%d %s stopped\n", s.ID, s.Type)
+			wg.Done()
 			return
 		default:
+			wg.Add(1)
 			if s.IsActive {
 				s.Value = rand.IntN(90) + 10
 				dataChannel <- *s
-				fmt.Printf("Sensor %d sent data: %d\n", s.ID, s.Value)
+				fmt.Printf("Sensor %s sent data: %d\n", s.Type, s.Value)
 			}
 			time.Sleep(time.Second)
+			wg.Done()
 		}
 	}
 }
@@ -40,27 +44,20 @@ type CentralSystem struct {
 
 func (cs *CentralSystem) Run(ctx context.Context, dataChannel <-chan Sensor) {
 	for {
+		cs.mu.Lock()
 		select {
 		case <-ctx.Done():
-			cs.mu.Lock()
-			defer cs.mu.Unlock()
-			fmt.Println("Central system shutting down, waiting for all records to be saved.")
 			cs.wg.Wait()
+			fmt.Println("Central system shutting down, waiting for all records to be saved.")
 			return
-		case sensorData := <-dataChannel:
-			cs.mu.Lock()
-			cs.wg.Add(1)
-			go func() {
-				defer cs.wg.Done()
-				if cs.data[sensorData.Type] == nil {
-					cs.data[sensorData.Type] = make(map[int]int)
-				}
-				cs.data[sensorData.Type][int(time.Now().UnixNano())] = sensorData.Value
-				fmt.Printf("Central system added to memory %d\n", sensorData.Value)
-				time.Sleep(3 * time.Second)
-			}()
-			cs.mu.Unlock()
+		case sensor := <-dataChannel:
+			if cs.data[sensor.Type] == nil {
+				cs.data[sensor.Type] = make(map[int]int)
+			}
+			cs.data[sensor.Type][int(time.Now().UnixNano())] = sensor.Value
+			fmt.Printf("Central system added to memory %d\n", sensor.Value)
 		}
+		cs.mu.Unlock()
 	}
 }
 
@@ -85,8 +82,8 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	for _, sensor := range sensors {
-		go sensor.Run(ctx, dataChannel)
+	for i, _ := range sensors {
+		go sensors[i].Run(&wg, ctx, dataChannel)
 	}
 
 	go cs.Run(ctx, dataChannel)
@@ -96,9 +93,9 @@ func main() {
 	fmt.Println("Started technical maintenance")
 	cancel()
 
-	time.Sleep(3 * time.Second)
-
 	fmt.Println("Maintenance completed. System is shut down.")
+
+	time.Sleep(3 * time.Second)
 
 	for key, item := range cs.Data() {
 		for time, data := range item {
