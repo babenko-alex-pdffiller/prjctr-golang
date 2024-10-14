@@ -25,8 +25,12 @@ func TestSensorAndCentralSystem(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	wg.Add(len(sensors))
 	for i, _ := range sensors {
-		go sensors[i].Run(&wg, ctx, dataChannel)
+		go func() {
+			defer wg.Done()
+			sensors[i].Run(ctx, dataChannel)
+		}()
 	}
 
 	go cs.Run(ctx, dataChannel)

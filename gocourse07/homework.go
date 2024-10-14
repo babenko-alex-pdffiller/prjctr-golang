@@ -15,23 +15,19 @@ type Sensor struct {
 	IsActive bool
 }
 
-func (s *Sensor) Run(wg *sync.WaitGroup, ctx context.Context, dataChannel chan<- Sensor) {
+func (s *Sensor) Run(ctx context.Context, dataChannel chan<- Sensor) {
 	for {
 		select {
 		case <-ctx.Done():
-			wg.Add(1)
 			fmt.Printf("Sensor #%d %s stopped\n", s.ID, s.Type)
-			wg.Done()
 			return
 		default:
-			wg.Add(1)
 			if s.IsActive {
 				s.Value = rand.IntN(90) + 10
 				dataChannel <- *s
 				fmt.Printf("Sensor %s sent data: %d\n", s.Type, s.Value)
 			}
 			time.Sleep(time.Second)
-			wg.Done()
 		}
 	}
 }
@@ -82,8 +78,12 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	wg.Add(len(sensors))
 	for i, _ := range sensors {
-		go sensors[i].Run(&wg, ctx, dataChannel)
+		go func() {
+			defer wg.Done()
+			sensors[i].Run(ctx, dataChannel)
+		}()
 	}
 
 	go cs.Run(ctx, dataChannel)
