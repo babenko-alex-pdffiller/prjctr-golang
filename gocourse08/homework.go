@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand/v2"
+	"sync"
 	"time"
 )
 
@@ -64,23 +65,15 @@ func (a *Animal) SetCollar(c Collar) {
 
 type Sender struct {
 	data         []AnimalData[any]
-	isActiveGprs bool
+	IsActiveGprs bool
 }
 
-func (s *Sender) Send(channel <-chan AnimalData[any]) {
-	for {
-		animalData := <-channel
-		if s.isActiveGprs {
-			fmt.Printf("Sending data for %s: %+v\n", animalData.Kind, animalData)
-		} else {
-			fmt.Printf("Gprs unactive, save data to local: %+v\n", animalData)
-			s.data = append(s.data, animalData)
-		}
-	}
+func (s *Sender) Send(animalData AnimalData[any]) {
+	fmt.Printf("Send %s data to server", animalData.Kind)
 }
 
 func (s *Sender) SendAllData(channel chan<- AnimalData[any]) {
-	if s.isActiveGprs {
+	if s.IsActiveGprs {
 		for _, data := range s.data {
 			fmt.Printf("Send local data: %+v\n", data)
 			channel <- data
@@ -90,7 +83,11 @@ func (s *Sender) SendAllData(channel chan<- AnimalData[any]) {
 }
 
 func (s *Sender) ActivateGprs() {
-	s.isActiveGprs = true
+	s.IsActiveGprs = true
+}
+
+func (s *Sender) AddData(animalData AnimalData[any]) {
+	s.data = append(s.data, animalData)
 }
 
 func main() {
@@ -101,11 +98,27 @@ func main() {
 	bearData := makeAnimalData(bear)
 	catData := makeAnimalData(cat)
 	gorillaData := makeAnimalData(gorilla)
+
 	channel := make(chan AnimalData[any])
 
-	sender := Sender{isActiveGprs: false}
+	sender := Sender{IsActiveGprs: false}
 
-	go sender.Send(channel)
+	go func(sender *Sender, channel <-chan AnimalData[any]) {
+		mu := sync.Mutex{}
+		for {
+			mu.Lock()
+			animalData := <-channel
+			if sender.IsActiveGprs {
+				fmt.Printf("Sending data for %s: %+v\n", animalData.Kind, animalData)
+				sender.Send(animalData)
+			} else {
+				fmt.Printf("Gprs unactive, save data to local: %+v\n", animalData)
+				sender.AddData(animalData)
+			}
+			time.Sleep(time.Second)
+			mu.Unlock()
+		}
+	}(sender, channel)
 
 	channel <- bearData
 	channel <- catData
@@ -114,9 +127,23 @@ func main() {
 	time.Sleep(time.Second)
 	// GPRS signal is activated
 	sender.ActivateGprs()
+
+	bear.Pulse = 50
+	cat.Temperature = 38.8
+	gorilla.Pulse = 48
+
+	bearData = makeAnimalData(bear)
+	catData = makeAnimalData(cat)
+	gorillaData = makeAnimalData(gorilla)
+
+	channel <- bearData
+	channel <- catData
+	channel <- gorillaData
+
 	sender.SendAllData(channel)
 
 	time.Sleep(time.Second)
+	wg.Wait()
 }
 
 func makeAnimalData(animal Animal) AnimalData[any] {

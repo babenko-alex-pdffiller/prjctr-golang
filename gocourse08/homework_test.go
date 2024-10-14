@@ -11,11 +11,11 @@ import (
 )
 
 func TestSenderActivateGprs(t *testing.T) {
-	sender := Sender{isActiveGprs: false}
+	sender := Sender{IsActiveGprs: false}
 	sender.ActivateGprs()
 
-	if !sender.isActiveGprs {
-		t.Error("ActivateGprs() did not set isActiveGprs to true")
+	if !sender.IsActiveGprs {
+		t.Error("ActivateGprs() did not set IsActiveGprs to true")
 	}
 }
 
@@ -39,7 +39,7 @@ func TestMakeAnimalData(t *testing.T) {
 func TestSendAllData(t *testing.T) {
 	// Arrange
 	channel := make(chan AnimalData[any])
-	sender := Sender{isActiveGprs: false}
+	sender := Sender{IsActiveGprs: false}
 	go sender.Send(channel)
 
 	channel <- AnimalData[any]{Kind: "cat", Pulse: 40, Temperature: 37.0}
