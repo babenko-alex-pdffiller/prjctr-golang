@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math/rand/v2"
 	"sync"
@@ -64,26 +65,28 @@ func (a *Animal) SetCollar(c Collar) {
 }
 
 type Sender struct {
-	data         []AnimalData[any]
-	IsActiveGprs bool
+	data       []AnimalData[any]
+	activeGprs bool
+	channel    chan<- bool
+}
+
+func (s *Sender) LocalData() []AnimalData[any] {
+	data := s.data
+	s.data = nil
+	return data
 }
 
 func (s *Sender) Send(animalData AnimalData[any]) {
-	fmt.Printf("Send %s data to server", animalData.Kind)
-}
-
-func (s *Sender) SendAllData(channel chan<- AnimalData[any]) {
-	if s.IsActiveGprs {
-		for _, data := range s.data {
-			fmt.Printf("Send local data: %+v\n", data)
-			channel <- data
-		}
-		s.data = []AnimalData[any]{}
-	}
+	fmt.Printf("Send %s data to server\n", animalData.Kind)
 }
 
 func (s *Sender) ActivateGprs() {
-	s.IsActiveGprs = true
+	s.activeGprs = true
+	s.channel <- s.activeGprs
+}
+
+func (s *Sender) IsActivateGprs() bool {
+	return s.activeGprs
 }
 
 func (s *Sender) AddData(animalData AnimalData[any]) {
@@ -99,30 +102,45 @@ func main() {
 	catData := makeAnimalData(cat)
 	gorillaData := makeAnimalData(gorilla)
 
-	channel := make(chan AnimalData[any])
+	channelAnimals := make(chan AnimalData[any])
 
-	sender := Sender{IsActiveGprs: false}
+	channelGprs := make(chan bool)
+	sender := Sender{activeGprs: false, channel: channelGprs}
+	wg := sync.WaitGroup{}
 
-	go func(sender *Sender, channel <-chan AnimalData[any]) {
-		mu := sync.Mutex{}
+	ctx, cancel := context.WithCancel(context.Background())
+	wg.Add(1)
+	go func(channelAnimals <-chan AnimalData[any], channelGprs <-chan bool) {
+		defer wg.Done()
+		//		mu := sync.Mutex{}
+		activateGprs := false
 		for {
-			mu.Lock()
-			animalData := <-channel
-			if sender.IsActiveGprs {
-				fmt.Printf("Sending data for %s: %+v\n", animalData.Kind, animalData)
-				sender.Send(animalData)
-			} else {
-				fmt.Printf("Gprs unactive, save data to local: %+v\n", animalData)
-				sender.AddData(animalData)
+			//			mu.Lock()
+			select {
+			case <-ctx.Done():
+				return
+			case animalData := <-channelAnimals:
+				if activateGprs == true {
+					fmt.Printf("Gprs active, Sending data for %s: %+v\n", animalData.Kind, animalData)
+					sender.Send(animalData)
+				} else {
+					fmt.Printf("Gprs unactive, save data to local: %+v\n", animalData)
+					sender.AddData(animalData)
+				}
+			case isActivateGprs := <-channelGprs:
+				activateGprs = isActivateGprs
+				for _, data := range sender.LocalData() {
+					sender.Send(data)
+				}
 			}
 			time.Sleep(time.Second)
-			mu.Unlock()
+			//			mu.Unlock()
 		}
-	}(sender, channel)
+	}(channelAnimals, channelGprs)
 
-	channel <- bearData
-	channel <- catData
-	channel <- gorillaData
+	channelAnimals <- bearData
+	channelAnimals <- catData
+	channelAnimals <- gorillaData
 
 	time.Sleep(time.Second)
 	// GPRS signal is activated
@@ -136,13 +154,11 @@ func main() {
 	catData = makeAnimalData(cat)
 	gorillaData = makeAnimalData(gorilla)
 
-	channel <- bearData
-	channel <- catData
-	channel <- gorillaData
+	channelAnimals <- bearData
+	channelAnimals <- catData
+	channelAnimals <- gorillaData
 
-	sender.SendAllData(channel)
-
-	time.Sleep(time.Second)
+	cancel()
 	wg.Wait()
 }
 

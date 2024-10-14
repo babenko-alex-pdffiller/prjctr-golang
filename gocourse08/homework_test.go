@@ -1,82 +1,112 @@
 package main
 
 import (
-	"bytes"
-	"fmt"
-	"io"
-	"os"
-	"strings"
+	"context"
+	"sync"
 	"testing"
 	"time"
 )
 
-func TestSenderActivateGprs(t *testing.T) {
-	sender := Sender{IsActiveGprs: false}
-	sender.ActivateGprs()
+func TestAnimalInitialization(t *testing.T) {
+	//Arrange & Act
+	bear := NewAnimal("bear", 48, 37.5)
+	cat := NewAnimal("cat", 160, 38.5)
+	gorilla := NewAnimal("primat", 50, 36.5)
 
-	if !sender.IsActiveGprs {
-		t.Error("ActivateGprs() did not set IsActiveGprs to true")
+	//Assert
+	if bear.Collar.AnimalKind != "bear" {
+		t.Errorf("Expected bear, got %s", bear.Collar.AnimalKind)
+	}
+
+	if cat.Collar.AnimalKind != "cat" {
+		t.Errorf("Expected cat, got %s", cat.Collar.AnimalKind)
+	}
+
+	if gorilla.Collar.AnimalKind != "primat" {
+		t.Errorf("Expected primat, got %s", gorilla.Collar.AnimalKind)
 	}
 }
 
-func TestMakeAnimalData(t *testing.T) {
-	animal := NewAnimal("primat", 30, 36.0)
-	data := makeAnimalData(animal)
+func TestSender_AddData(t *testing.T) {
+	//Arrange
+	channelGprs := make(chan bool)
+	sender := Sender{activeGprs: false, channel: channelGprs}
 
-	if data.Kind != "primat" {
-		t.Errorf("Expected kind 'primat', got '%s'", data.Kind)
+	cat := NewAnimal("cat", 160, 38.5)
+	catData := makeAnimalData(cat)
+	//Act
+	sender.AddData(catData)
+	//Assert
+	if len(sender.data) != 1 {
+		t.Errorf("Expected 1 data entry, got %d", len(sender.data))
 	}
 
-	if data.Pulse != 30 {
-		t.Errorf("Expected heart rate 30, got %d", data.Pulse)
-	}
-
-	if data.Temperature != 36.0 {
-		t.Errorf("Expected body temperature 36.0, got %f", data.Temperature)
+	if sender.data[0].Kind != "cat" {
+		t.Errorf("Expected cat data, got %s", sender.data[0].Kind)
 	}
 }
 
-func TestSendAllData(t *testing.T) {
-	// Arrange
-	channel := make(chan AnimalData[any])
-	sender := Sender{IsActiveGprs: false}
-	go sender.Send(channel)
-
-	channel <- AnimalData[any]{Kind: "cat", Pulse: 40, Temperature: 37.0}
-	channel <- AnimalData[any]{Kind: "bear", Pulse: 45, Temperature: 37.5}
-	channel <- AnimalData[any]{Kind: "primat", Pulse: 50, Temperature: 38.0}
-
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	// Act
-	time.Sleep(time.Second)
+func TestSender_ActivateGprs(t *testing.T) {
+	//Arrange
+	channelGprs := make(chan bool, 1)
+	sender := Sender{activeGprs: false, channel: channelGprs}
+	//Act
 	sender.ActivateGprs()
-	sender.SendAllData(channel)
 
-	time.Sleep(time.Second)
-	w.Close()
-	os.Stdout = oldStdout
+	isActivated := <-channelGprs
+	//Assert
+	if !isActivated {
+		t.Errorf("Expected GPRS to be activated, but it was not")
+	}
+}
 
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	output := buf.String()
+func TestGoroutine_SendData(t *testing.T) {
+	//Arrange
+	channelAnimals := make(chan AnimalData[any], 3)
+	channelGprs := make(chan bool, 1)
+	sender := Sender{activeGprs: false, channel: channelGprs}
 
-	// Assert
-	expectedAnimals := []string{"cat", "bear", "primat"}
-	for _, animal := range expectedAnimals {
-		if !strings.Contains(output, fmt.Sprintf("Sending data for %s", animal)) {
-			fmt.Println("WTF: " + output)
-			t.Errorf("Expected output to contain 'Sending data for %s', but it didn't", animal)
+	bear := NewAnimal("bear", 48, 37.5)
+	cat := NewAnimal("cat", 160, 38.5)
+	gorilla := NewAnimal("primat", 50, 36.5)
+
+	channelAnimals <- makeAnimalData(bear)
+	channelAnimals <- makeAnimalData(cat)
+	channelAnimals <- makeAnimalData(gorilla)
+	//Act
+	wg := sync.WaitGroup{}
+	ctx, cancel := context.WithCancel(context.Background())
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		activateGprs := false
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case animalData := <-channelAnimals:
+				if activateGprs {
+					sender.Send(animalData)
+				} else {
+					sender.AddData(animalData)
+				}
+			case isActivateGprs := <-channelGprs:
+				activateGprs = isActivateGprs
+				for _, data := range sender.LocalData() {
+					sender.Send(data)
+				}
+			}
 		}
-	}
+	}()
 
-	// Check if the channel is empty after sending all data
-	select {
-	case <-channel:
-		t.Error("Channel should be empty after SendAllData")
-	default:
-		// Channel is empty, which is expected
+	sender.ActivateGprs()
+
+	time.Sleep(time.Second)
+	cancel()
+	wg.Wait()
+	//Assert
+	if len(sender.data) != 0 {
+		t.Errorf("Expected no local data, but got %d entries", len(sender.data))
 	}
 }
