@@ -156,7 +156,7 @@ func makeAnimals() []Animal {
 }
 
 func moveAnimalsPosition(animals []Animal) []Animal {
-	for i, _ := range animals {
+	for i := range animals {
 		animals[i].Position = rand.IntN(20) + 1
 	}
 

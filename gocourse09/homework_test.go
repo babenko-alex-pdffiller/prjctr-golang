@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -69,16 +70,12 @@ func TestFindAnimalsNear(t *testing.T) {
 
 	var expected bool
 	for _, expectedAnimal := range expectedAnimals {
-		expected = false
-		for _, animal := range nearAnimals {
-			if animal.ID == expectedAnimal.ID {
-				expected = true
-				break
-			}
-		}
+		expected = slices.ContainsFunc(nearAnimals, func(animal Animal) bool {
+			return animal.ID == expectedAnimal.ID
+		})
 
 		if expected == false {
-			t.Errorf("Animal %v not found in nearAnimals", expectedAnimal)
+			t.Errorf("Animal %v not found in nearAnimals %v", expectedAnimal, nearAnimals)
 		}
 	}
 }
